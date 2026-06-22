@@ -4,6 +4,7 @@ import pytest
 from hypothesis import given, strategies as st
 
 from main import (
+    AcademicPredictor,
     MarkPredictor,
     check_data_reliability,
     load_and_clean_data,
@@ -56,6 +57,95 @@ def test_save_prediction_output(tmp_path):
 def test_check_data_reliability_hypothesis(value):
     result = check_data_reliability(value)
     assert isinstance(result, bool)
+
+
+def test_academic_predictor_clean_data(tmp_path):
+    df = pd.DataFrame([
+        {
+            'Student_Name': 'Alex Anderson',
+            'Maths_Advanced': 90,
+            'Physics': 85,
+            'Modern_History': 80,
+            'Software_Engineering_Final': 92,
+        },
+        {
+            'Student_Name': 'Invalid Student',
+            'Maths_Advanced': 150,
+            'Physics': 85,
+            'Modern_History': 80,
+            'Software_Engineering_Final': 92,
+        },
+        {
+            'Student_Name': 'Missing Fields',
+            'Maths_Advanced': None,
+            'Physics': 70,
+            'Modern_History': 75,
+            'Software_Engineering_Final': 80,
+        },
+    ])
+
+    predictor = AcademicPredictor()
+    cleaned = predictor.clean_data(df)
+    assert len(cleaned) == 1
+    assert cleaned.iloc[0]['Student_Name'] == 'Alex Anderson'
+
+    out_path = tmp_path / 'cleaned.csv'
+    saved_path = predictor.save_cleaned_data(cleaned, path=str(out_path))
+    assert saved_path == str(out_path)
+    loaded = pd.read_csv(saved_path)
+    assert loaded['Student_Name'].iloc[0] == 'Alex Anderson'
+
+
+def test_academic_predictor_train_evaluate():
+    df = pd.DataFrame([
+        {
+            'Student_Name': 'Alex Anderson',
+            'Maths_Advanced': 80,
+            'Physics': 70,
+            'Modern_History': 60,
+            'Software_Engineering_Final': 85,
+        },
+        {
+            'Student_Name': 'Jamie Smith',
+            'Maths_Advanced': 60,
+            'Physics': 65,
+            'Modern_History': 70,
+            'Software_Engineering_Final': 75,
+        },
+        {
+            'Student_Name': 'Casey Lee',
+            'Maths_Advanced': 70,
+            'Physics': 80,
+            'Modern_History': 65,
+            'Software_Engineering_Final': 82,
+        },
+        {
+            'Student_Name': 'Taylor Gray',
+            'Maths_Advanced': 50,
+            'Physics': 55,
+            'Modern_History': 60,
+            'Software_Engineering_Final': 68,
+        },
+    ])
+
+    predictor = AcademicPredictor()
+    cleaned = predictor.clean_data(df)
+    X_train, X_test, y_train, y_test = predictor.prepare_data(cleaned, test_size=0.5, random_state=42)
+    predictor.train(X_train, y_train)
+    rmse, predictions = predictor.evaluate_rmse(X_test, y_test)
+
+    assert rmse >= 0
+    assert len(predictions) == len(y_test)
+
+
+def test_academic_predictor_predict_student(sample_dataframe):
+    predictor = AcademicPredictor()
+    predictor.model.fit(
+        sample_dataframe[['Maths_Advanced', 'Physics', 'Modern_History']].astype(float),
+        sample_dataframe['Software_Engineering_Final'].astype(float),
+    )
+    predicted = predictor.predict_student(sample_dataframe.iloc[0])
+    assert isinstance(predicted, float)
 
 
 def test_bandit_semgrep_placeholder():

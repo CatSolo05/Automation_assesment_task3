@@ -81,7 +81,10 @@ class AcademicPredictor:
     def predict_student(self, student_row):
         if student_row is None:
             return None
-        X_student = student_row[self.feature_columns].to_numpy().reshape(1, -1)
+        X_student = pd.DataFrame(
+            [student_row[self.feature_columns].to_dict()],
+            columns=self.feature_columns,
+        )
         return float(self.model.predict(X_student)[0])
 
 
@@ -245,15 +248,6 @@ def main():
 
     run_bias_audit(df_clean)
     cross_validation_check(X2, y, scaler)
-
-    print('--- Logic Gatekeeper ---')
-    check_data_reliability(45.0)
-    check_data_reliability(92.0)
-
-
-if __name__ == '__main__':
-    main()
-
     neural_network_test(X2_train_scaled, X2_test_scaled, y_train_lvl2, y_test_lvl2, rmse_level2)
 
 
