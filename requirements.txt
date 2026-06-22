@@ -1,2 +1,5 @@
-## this needs requirements to be added
+pandas
+numpy
+matplotlib
+scikit-learn
  

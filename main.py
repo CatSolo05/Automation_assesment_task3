@@ -101,7 +101,40 @@ def train_level2_ai(df_clean, y):
     rmse_level2 = np.sqrt(mean_squared_error(y_test, y_pred_level2))
     print(f"\nLevel 2 RMSE: {rmse_level2:.2f}")
 
-    return scaler, X2, X2_train_scaled, X2_test_scaled, y_train, y_test, y_pred_level2, rmse_level2
+    return my_ai_level2, scaler, X2, X2_train_scaled, X2_test_scaled, y_train, y_test, y_pred_level2, rmse_level2
+
+
+def find_student_row(df, student_name="Alex Anderson"):
+    matches = df[df['Student_Name'].str.contains(student_name, case=False, na=False)]
+    if matches.empty:
+        print(f"\nNo student found with name matching '{student_name}'.")
+        return None
+    student_row = matches.iloc[0]
+    print(f"\nFound student record for {student_row['Student_Name']}")
+    return student_row
+
+
+def predict_student_final_score(student_row, scaler, model):
+    if student_row is None:
+        return None
+
+    feature_cols = ['Maths_Advanced', 'Physics']
+    X_student = student_row[feature_cols].values.reshape(1, -1)
+    X_student_scaled = scaler.transform(X_student)
+    prediction = model.predict(X_student_scaled)[0]
+    print(f"\nPredicted Software_Engineering_Final for {student_row['Student_Name']}: {prediction:.1f}")
+    return prediction
+
+
+def save_prediction_output(student_name, predicted_score, model_name='Level 2 AI', path='alex_prediction.csv'):
+    output = pd.DataFrame([{
+        'Student_Name': student_name,
+        'Model': model_name,
+        'Predicted_Software_Engineering_Final': round(predicted_score, 1)
+    }])
+    output.to_csv(path, index=False)
+    print(f"\nPrediction output saved to {path}")
+    return path
 
 
 def run_bias_audit(df_clean):
@@ -152,7 +185,12 @@ def main():
     my_ai, y_pred_ai, rmse_ai = train_mark_predictor(X1_train, y_train, X1_test, y_test)
 
     y = df_clean['Software_Engineering_Final'].values
-    scaler, X2, X2_train_scaled, X2_test_scaled, y_train_lvl2, y_test_lvl2, y_pred_level2, rmse_level2 = train_level2_ai(df_clean, y)
+    my_ai_level2, scaler, X2, X2_train_scaled, X2_test_scaled, y_train_lvl2, y_test_lvl2, y_pred_level2, rmse_level2 = train_level2_ai(df_clean, y)
+
+    alex_row = find_student_row(df_raw, 'Alex')
+    alex_prediction = predict_student_final_score(alex_row, scaler, my_ai_level2)
+    if alex_prediction is not None:
+        save_prediction_output(alex_row['Student_Name'], alex_prediction)
 
     run_bias_audit(df_clean)
     cross_validation_check(X2, y, scaler)
