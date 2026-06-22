@@ -31,11 +31,16 @@ def test_find_student_row(sample_dataframe):
 
 
 def test_predict_student_final_score(sample_dataframe):
-    sample_df = sample_dataframe.copy()
-    scaler = np.array([[1.0]])
-    model = type('M', (), {'predict': lambda self, X: np.array([90.0])})()
-    student_row = sample_df.iloc[0]
-    prediction = predict_student_final_score(student_row, scaler, model)
+    class DummyScaler:
+        def transform(self, X):
+            return X
+
+    class DummyModel:
+        def predict(self, X):
+            return np.array([90.0])
+
+    student_row = sample_dataframe.iloc[0]
+    prediction = predict_student_final_score(student_row, DummyScaler(), DummyModel())
     assert prediction == 90.0
 
 
@@ -47,7 +52,7 @@ def test_save_prediction_output(tmp_path):
     assert output_df.iloc[0]['Predicted_Software_Engineering_Final'] == 92.5
 
 
-given(st.floats(min_value=0, max_value=100))
+@given(st.floats(min_value=0, max_value=100))
 def test_check_data_reliability_hypothesis(value):
     result = check_data_reliability(value)
     assert isinstance(result, bool)
