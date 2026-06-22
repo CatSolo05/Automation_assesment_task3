@@ -1,0 +1,9 @@
+[tool.pytest]
+addopts = "--cov=main --cov-report=term-missing"
+python_files = ["test_*.py"]
+
+[tool.bandit]
+skips = ["B101", "B102"]
+
+[tool.semgrep]
+# Semgrep config can be added here if needed

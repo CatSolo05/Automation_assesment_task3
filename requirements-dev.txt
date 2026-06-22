@@ -1,0 +1,5 @@
+bandit
+semgrep
+pytest
+pytest-cov
+hypothesis
