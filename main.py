@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from datetime import datetime, timezone
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.metrics import mean_squared_error
 from sklearn.linear_model import LinearRegression
@@ -81,10 +82,7 @@ class AcademicPredictor:
     def predict_student(self, student_row):
         if student_row is None:
             return None
-        X_student = pd.DataFrame(
-            [student_row[self.feature_columns].to_dict()],
-            columns=self.feature_columns,
-        )
+        X_student = student_row[self.feature_columns].to_numpy().reshape(1, -1)
         return float(self.model.predict(X_student)[0])
 
 
@@ -289,7 +287,6 @@ def log_rmse(model_name, rmse, path='rmse_report.csv'):
     """Append RMSE entry for a model to a CSV report file and return path."""
     import os
     import csv
-    from datetime import datetime
 
     header = ['timestamp', 'model', 'rmse']
     write_header = not os.path.exists(path)
@@ -297,7 +294,7 @@ def log_rmse(model_name, rmse, path='rmse_report.csv'):
         writer = csv.writer(f)
         if write_header:
             writer.writerow(header)
-        writer.writerow([datetime.utcnow().isoformat(), model_name, float(rmse)])
+        writer.writerow([datetime.now(timezone.utc).isoformat(), model_name, float(rmse)])
     print(f'Logged RMSE for {model_name} -> {path}')
     return path
 
@@ -334,10 +331,12 @@ def main():
     print(f'df_clean rows: {len(df_clean)}')
 
     model, X1_train, X1_test, y_train, y_test, y_pred = train_simple_linear_model(df_clean)
+    log_rmse('Baseline', np.sqrt(mean_squared_error(y_test, y_pred)))
     my_ai, y_pred_ai, rmse_ai = train_mark_predictor(X1_train, y_train, X1_test, y_test)
 
     y = df_clean['Software_Engineering_Final'].values
     my_ai_level2, scaler, X2, X2_train_scaled, X2_test_scaled, y_train_lvl2, y_test_lvl2, y_pred_level2, rmse_level2 = train_level2_ai(df_clean, y)
+    log_rmse('Level 2 AI', rmse_level2)
 
     alex_row = find_student_row(df_raw, 'Alex')
     alex_prediction = predict_student_final_score(alex_row, scaler, my_ai_level2)
