@@ -189,19 +189,100 @@ def save_prediction_output(student_name, predicted_score, model_name='Level 2 AI
 
 def run_bias_audit(df_clean):
     print('--- Running Bias Audit (80% Rule) ---')
+    # Default groups: compare students strong in Physics vs Modern History
     group_a = df_clean[df_clean['Physics'] > 70]
     group_b = df_clean[df_clean['Modern_History'] > 70]
 
-    pass_rate_a = group_a['Software_Engineering_Final'].ge(50).mean()
-    pass_rate_b = group_b['Software_Engineering_Final'].ge(50).mean()
-    disparate_impact_ratio = pass_rate_b / pass_rate_a if pass_rate_a != 0 else 0
+    # Calculate pass rates (>=50)
+    pass_rate_a = group_a['Software_Engineering_Final'].ge(50).mean() if len(group_a) > 0 else 0.0
+    pass_rate_b = group_b['Software_Engineering_Final'].ge(50).mean() if len(group_b) > 0 else 0.0
 
-    if disparate_impact_ratio < 0.8:
-        print(f'\nWARNING: Bias detected! Disparate Impact Ratio = {disparate_impact_ratio:.2f}')
+    # Handle zero divisions and small sample sizes
+    disparate_impact_ratio = pass_rate_b / pass_rate_a if pass_rate_a not in (0, None) else 0.0
+
+    # Provide warnings for small groups
+    warnings = []
+    if len(group_a) < 5 or len(group_b) < 5:
+        warnings.append('Small sample size: results may be unreliable')
+
+    if disparate_impact_ratio < 0.8 and disparate_impact_ratio > 0:
+        warnings.append(f'Bias suspected: disparate impact ratio = {disparate_impact_ratio:.2f}')
+
+    if disparate_impact_ratio == 0 and pass_rate_a == 0 and pass_rate_b == 0:
+        warnings.append('No passes in either group')
+
+    if warnings:
+        print('\nWARNING: ' + '; '.join(warnings))
     else:
         print(f'\nAudit passed. Disparate Impact Ratio = {disparate_impact_ratio:.2f}')
 
     return disparate_impact_ratio
+
+
+def bias_audit_report(df_clean, group_a_filter=None, group_b_filter=None, pass_threshold=50, min_group_size=5):
+    """Return a detailed bias audit report dict for the provided filters.
+
+    group_a_filter/group_b_filter are callables that accept the dataframe and
+    return boolean masks. If not provided, defaults mirror run_bias_audit.
+    """
+    if group_a_filter is None:
+        group_a_filter = lambda df: df['Physics'] > 70
+    if group_b_filter is None:
+        group_b_filter = lambda df: df['Modern_History'] > 70
+
+    group_a = df_clean[group_a_filter(df_clean)]
+    group_b = df_clean[group_b_filter(df_clean)]
+
+    pass_rate_a = group_a['Software_Engineering_Final'].ge(pass_threshold).mean() if len(group_a) > 0 else 0.0
+    pass_rate_b = group_b['Software_Engineering_Final'].ge(pass_threshold).mean() if len(group_b) > 0 else 0.0
+
+    disparate_impact_ratio = pass_rate_b / pass_rate_a if pass_rate_a not in (0, None) else 0.0
+
+    report = {
+        'group_a_size': int(len(group_a)),
+        'group_b_size': int(len(group_b)),
+        'pass_rate_a': float(pass_rate_a),
+        'pass_rate_b': float(pass_rate_b),
+        'disparate_impact_ratio': float(disparate_impact_ratio),
+        'warnings': [],
+    }
+
+    if report['group_a_size'] < min_group_size or report['group_b_size'] < min_group_size:
+        report['warnings'].append('Small sample size')
+
+    if report['disparate_impact_ratio'] < 0.8:
+        report['warnings'].append('Potential disparate impact (ratio < 0.8)')
+
+    return report
+
+
+def check_data_privacy(df, pii_columns=None):
+    """Check dataframe for presence of PII columns and return findings."""
+    pii_columns = pii_columns or ['Student_Name']
+    found = [col for col in pii_columns if col in df.columns]
+    result = {
+        'pii_found': bool(found),
+        'columns': found,
+    }
+    if result['pii_found']:
+        print(f"PII columns detected: {found}. Consider anonymizing before sharing.")
+    else:
+        print('No PII columns detected')
+    return result
+
+
+def anonymize_and_save(df, path='master_markbook_anonymized.csv'):
+    """Replace Student_Name with a stable hashed ID and save CSV."""
+    if 'Student_Name' not in df.columns:
+        raise ValueError('Student_Name column required for anonymization')
+
+    df_out = df.copy()
+    # Create stable IDs by hashing the Student_Name string
+    df_out['Student_ID'] = df_out['Student_Name'].astype(str).map(lambda s: abs(hash(s)) % (10**8))
+    df_out = df_out.drop(columns=['Student_Name'])
+    df_out.to_csv(path, index=False)
+    print(f'Anonymized data saved to {path}')
+    return path
 
 
 def cross_validation_check(X2, y, scaler):

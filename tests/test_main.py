@@ -15,6 +15,9 @@ from main import (
     predict_student_final_score,
     save_prediction_output,
     run_bias_audit,
+    bias_audit_report,
+    check_data_privacy,
+    anonymize_and_save,
     cross_validation_check,
     neural_network_test,
 )
@@ -150,3 +153,28 @@ def test_academic_predictor_predict_student(sample_dataframe):
 
 def test_bandit_semgrep_placeholder():
     assert True
+
+
+def test_run_bias_audit_sample(sample_dataframe):
+    # Use a small sample to ensure function runs and returns a float
+    ratio = run_bias_audit(sample_dataframe)
+    assert isinstance(ratio, float)
+
+
+def test_bias_audit_report(sample_dataframe):
+    report = bias_audit_report(sample_dataframe)
+    assert 'disparate_impact_ratio' in report
+    assert isinstance(report['disparate_impact_ratio'], float)
+
+
+def test_check_data_privacy_and_anonymize(tmp_path, sample_dataframe):
+    # check_data_privacy should detect Student_Name
+    res = check_data_privacy(sample_dataframe)
+    assert res['pii_found'] is True
+
+    out = tmp_path / 'anon.csv'
+    path = anonymize_and_save(sample_dataframe, path=str(out))
+    assert path == str(out)
+    df_loaded = pd.read_csv(path)
+    assert 'Student_ID' in df_loaded.columns
+    assert 'Student_Name' not in df_loaded.columns
