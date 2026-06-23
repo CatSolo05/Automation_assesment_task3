@@ -285,6 +285,23 @@ def anonymize_and_save(df, path='master_markbook_anonymized.csv'):
     return path
 
 
+def log_rmse(model_name, rmse, path='rmse_report.csv'):
+    """Append RMSE entry for a model to a CSV report file and return path."""
+    import os
+    import csv
+    from datetime import datetime
+
+    header = ['timestamp', 'model', 'rmse']
+    write_header = not os.path.exists(path)
+    with open(path, 'a', newline='') as f:
+        writer = csv.writer(f)
+        if write_header:
+            writer.writerow(header)
+        writer.writerow([datetime.utcnow().isoformat(), model_name, float(rmse)])
+    print(f'Logged RMSE for {model_name} -> {path}')
+    return path
+
+
 def cross_validation_check(X2, y, scaler):
     print('--- Cross-Validation Check ---')
     X2_scaled = scaler.fit_transform(X2)

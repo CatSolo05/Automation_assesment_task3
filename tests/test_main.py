@@ -20,6 +20,7 @@ from main import (
     anonymize_and_save,
     cross_validation_check,
     neural_network_test,
+    log_rmse,
 )
 
 
@@ -178,3 +179,11 @@ def test_check_data_privacy_and_anonymize(tmp_path, sample_dataframe):
     df_loaded = pd.read_csv(path)
     assert 'Student_ID' in df_loaded.columns
     assert 'Student_Name' not in df_loaded.columns
+
+
+def test_log_rmse(tmp_path):
+    out = tmp_path / 'rmse.csv'
+    path = log_rmse('test_model', 3.14159, path=str(out))
+    assert path == str(out)
+    df = pd.read_csv(path)
+    assert df.iloc[-1]['model'] == 'test_model'
