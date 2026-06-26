@@ -441,8 +441,11 @@ def main():
     print(f'df_train rows (anonymized): {len(df_train)}')
 
     model, X1_train, X1_test, y_train, y_test, y_pred = train_simple_linear_model(df_train)
-    log_rmse('Baseline', np.sqrt(mean_squared_error(y_test, y_pred)))
+    baseline_rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+    log_rmse('Baseline', baseline_rmse)
+
     my_ai, y_pred_ai, rmse_ai = train_mark_predictor(X1_train, y_train, X1_test, y_test)
+    log_rmse('MarkPredictor Class', rmse_ai)
 
     y = df_train['Software_Engineering_Final'].values
     my_ai_level2, scaler, X2, X2_train_scaled, X2_test_scaled, y_train_lvl2, y_test_lvl2, y_pred_level2, rmse_level2 = train_level2_ai(df_train, y)
@@ -456,9 +459,11 @@ def main():
     run_bias_audit(df_train)
     
     # Enhanced cross-validation report
-    detailed_cross_validation_report(X2, y, scaler)
+    cv_report = detailed_cross_validation_report(X2, y, scaler)
+    log_rmse('Cross-Validation Mean', cv_report['cv_mean_rmse'])
     
-    neural_network_test(X2_train_scaled, X2_test_scaled, y_train_lvl2, y_test_lvl2, rmse_level2)
+    _, _, rmse_nn = neural_network_test(X2_train_scaled, X2_test_scaled, y_train_lvl2, y_test_lvl2, rmse_level2)
+    log_rmse('Neural Network', rmse_nn)
 
 
 if __name__ == '__main__':
