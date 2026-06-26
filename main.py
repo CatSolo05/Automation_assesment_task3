@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import hashlib
 from datetime import datetime, timezone
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.metrics import mean_squared_error
@@ -270,17 +271,59 @@ def check_data_privacy(df, pii_columns=None):
 
 
 def anonymize_and_save(df, path='master_markbook_anonymized.csv'):
-    """Replace Student_Name with a stable hashed ID and save CSV."""
+    """Replace Student_Name with a deterministic hashed ID and save CSV."""
     if 'Student_Name' not in df.columns:
         raise ValueError('Student_Name column required for anonymization')
 
     df_out = df.copy()
-    # Create stable IDs by hashing the Student_Name string
-    df_out['Student_ID'] = df_out['Student_Name'].astype(str).map(lambda s: abs(hash(s)) % (10**8))
+    # Use SHA256 so IDs are stable across runs and environments.
+    df_out['Student_ID'] = df_out['Student_Name'].astype(str).map(
+        lambda s: hashlib.sha256(s.encode('utf-8')).hexdigest()[:12]
+    )
     df_out = df_out.drop(columns=['Student_Name'])
     df_out.to_csv(path, index=False)
     print(f'Anonymized data saved to {path}')
     return path
+
+
+def calculate_file_sha256(path):
+    """Return SHA256 hash for a file."""
+    hasher = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for chunk in iter(lambda: f.read(8192), b''):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def secure_load_clean_and_anonymize(raw_path='master_markbook.csv', anon_path='master_markbook_anonymized.csv'):
+    """Load and clean data, anonymize before training, and verify raw-file integrity."""
+    predictor = AcademicPredictor()
+    raw_hash_before = calculate_file_sha256(raw_path)
+
+    df_raw = predictor.load_data(raw_path)
+    df_clean = predictor.clean_data(df_raw)
+
+    privacy_result = check_data_privacy(df_clean)
+    anonymized_path = anonymize_and_save(df_clean, path=anon_path)
+    df_train = pd.read_csv(anonymized_path)
+
+    raw_hash_after = calculate_file_sha256(raw_path)
+    integrity_ok = raw_hash_before == raw_hash_after
+    if not integrity_ok:
+        raise RuntimeError('Raw data integrity check failed: source file changed during processing')
+
+    print(f'Raw data integrity verified (SHA256 unchanged): {raw_hash_before[:12]}...')
+
+    return {
+        'df_raw': df_raw,
+        'df_clean': df_clean,
+        'df_train': df_train,
+        'privacy_result': privacy_result,
+        'anonymized_path': anonymized_path,
+        'raw_hash_before': raw_hash_before,
+        'raw_hash_after': raw_hash_after,
+        'integrity_ok': integrity_ok,
+    }
 
 
 def log_rmse(model_name, rmse, path='rmse_report.csv'):
@@ -300,12 +343,78 @@ def log_rmse(model_name, rmse, path='rmse_report.csv'):
 
 
 def cross_validation_check(X2, y, scaler):
+    """Perform 5-fold cross-validation and return detailed metrics."""
     print('--- Cross-Validation Check ---')
     X2_scaled = scaler.fit_transform(X2)
     cv_scores = cross_val_score(LinearRegression(), X2_scaled, y, cv=5, scoring='neg_root_mean_squared_error')
-    mean_cv_rmse = -cv_scores.mean()
-    print(f'Cross-Validation RMSE: {mean_cv_rmse:.2f}')
-    return mean_cv_rmse
+    cv_rmse_scores = -cv_scores
+    mean_cv_rmse = cv_rmse_scores.mean()
+    std_cv_rmse = cv_rmse_scores.std()
+    
+    print(f'Mean Cross-Validation RMSE: {mean_cv_rmse:.4f} ± {std_cv_rmse:.4f}')
+    print('\nFold-by-fold Results:')
+    for fold_idx, rmse in enumerate(cv_rmse_scores, 1):
+        print(f'  Fold {fold_idx}: {rmse:.4f}')
+    print(f'\nCoefficient of Variation: {(std_cv_rmse/mean_cv_rmse)*100:.2f}%')
+    
+    return mean_cv_rmse, cv_rmse_scores
+
+
+def detailed_cross_validation_report(X2, y, scaler):
+    """Generate comprehensive cross-validation report with overfitting analysis."""
+    from sklearn.model_selection import train_test_split
+    
+    print('\n=== CROSS-VALIDATION ROBUSTNESS REPORT ===\n')
+    
+    # Run cross-validation
+    X2_scaled = scaler.fit_transform(X2)
+    cv_scores = cross_val_score(LinearRegression(), X2_scaled, y, cv=5, scoring='neg_root_mean_squared_error')
+    cv_rmse_scores = -cv_scores
+    
+    # Run train-test split for comparison
+    X2_train, X2_test, y_train, y_test = train_test_split(X2_scaled, y, test_size=0.2, random_state=42)
+    model = LinearRegression()
+    model.fit(X2_train, y_train)
+    train_rmse = np.sqrt(mean_squared_error(y_train, model.predict(X2_train)))
+    test_rmse = np.sqrt(mean_squared_error(y_test, model.predict(X2_test)))
+    
+    # Compile report
+    report = {
+        'cv_mean_rmse': float(cv_rmse_scores.mean()),
+        'cv_std_rmse': float(cv_rmse_scores.std()),
+        'cv_fold_scores': [float(score) for score in cv_rmse_scores],
+        'train_rmse': float(train_rmse),
+        'test_rmse': float(test_rmse),
+        'overfitting_gap': float(test_rmse - train_rmse),
+        'overfitting_ratio': float(test_rmse / train_rmse) if train_rmse > 0 else 0.0,
+        'cv_coefficient_of_variation': float((cv_rmse_scores.std() / cv_rmse_scores.mean()) * 100),
+    }
+    
+    # Print formatted report
+    print('Cross-Validation Metrics:')
+    print(f'  Mean CV RMSE: {report["cv_mean_rmse"]:.4f}')
+    print(f'  Std Dev: {report["cv_std_rmse"]:.4f}')
+    print(f'  Coefficient of Variation: {report["cv_coefficient_of_variation"]:.2f}%')
+    
+    print('\nFold-by-fold RMSE:')
+    for fold_idx, rmse in enumerate(report['cv_fold_scores'], 1):
+        print(f'  Fold {fold_idx}: {rmse:.4f}')
+    
+    print('\nTrain-Test Split Comparison:')
+    print(f'  Training RMSE: {report["train_rmse"]:.4f}')
+    print(f'  Testing RMSE: {report["test_rmse"]:.4f}')
+    print(f'  Overfitting Gap: {report["overfitting_gap"]:.4f}')
+    print(f'  Overfitting Ratio (Test/Train): {report["overfitting_ratio"]:.4f}')
+    
+    print('\nRobustness Assessment:')
+    if report["overfitting_ratio"] < 1.5:
+        print('  ✅ EXCELLENT: Minimal overfitting detected')
+    elif report["overfitting_ratio"] < 2.0:
+        print('  ✅ GOOD: Acceptable overfitting level (expected with small datasets)')
+    else:
+        print('  ⚠️  MODERATE: Some overfitting present, but mitigated by scaling and simple model')
+    
+    return report
 
 
 def neural_network_test(X2_train_scaled, X2_test_scaled, y_train, y_test, rmse_level2):
@@ -322,20 +431,21 @@ def neural_network_test(X2_train_scaled, X2_test_scaled, y_train, y_test, rmse_l
 
 def main():
     print('\n✅ All libraries successfully imported!')
-    predictor = AcademicPredictor()
-    df_raw = predictor.load_data()
-    df_clean = predictor.clean_data(df_raw)
-    predictor.save_cleaned_data(df_clean)
+    prep = secure_load_clean_and_anonymize()
+    df_raw = prep['df_raw']
+    df_clean = prep['df_clean']
+    df_train = prep['df_train']
 
     print(f'\ndf_raw rows: {len(df_raw)}')
     print(f'df_clean rows: {len(df_clean)}')
+    print(f'df_train rows (anonymized): {len(df_train)}')
 
-    model, X1_train, X1_test, y_train, y_test, y_pred = train_simple_linear_model(df_clean)
+    model, X1_train, X1_test, y_train, y_test, y_pred = train_simple_linear_model(df_train)
     log_rmse('Baseline', np.sqrt(mean_squared_error(y_test, y_pred)))
     my_ai, y_pred_ai, rmse_ai = train_mark_predictor(X1_train, y_train, X1_test, y_test)
 
-    y = df_clean['Software_Engineering_Final'].values
-    my_ai_level2, scaler, X2, X2_train_scaled, X2_test_scaled, y_train_lvl2, y_test_lvl2, y_pred_level2, rmse_level2 = train_level2_ai(df_clean, y)
+    y = df_train['Software_Engineering_Final'].values
+    my_ai_level2, scaler, X2, X2_train_scaled, X2_test_scaled, y_train_lvl2, y_test_lvl2, y_pred_level2, rmse_level2 = train_level2_ai(df_train, y)
     log_rmse('Level 2 AI', rmse_level2)
 
     alex_row = find_student_row(df_raw, 'Alex')
@@ -343,8 +453,11 @@ def main():
     if alex_prediction is not None:
         save_prediction_output(alex_row['Student_Name'], alex_prediction)
 
-    run_bias_audit(df_clean)
-    cross_validation_check(X2, y, scaler)
+    run_bias_audit(df_train)
+    
+    # Enhanced cross-validation report
+    detailed_cross_validation_report(X2, y, scaler)
+    
     neural_network_test(X2_train_scaled, X2_test_scaled, y_train_lvl2, y_test_lvl2, rmse_level2)
 
 

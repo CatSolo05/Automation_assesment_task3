@@ -21,6 +21,8 @@ from main import (
     cross_validation_check,
     neural_network_test,
     log_rmse,
+    calculate_file_sha256,
+    secure_load_clean_and_anonymize,
 )
 
 
@@ -179,6 +181,8 @@ def test_check_data_privacy_and_anonymize(tmp_path, sample_dataframe):
     df_loaded = pd.read_csv(path)
     assert 'Student_ID' in df_loaded.columns
     assert 'Student_Name' not in df_loaded.columns
+    assert df_loaded['Student_ID'].map(lambda x: isinstance(x, str)).all()
+    assert df_loaded['Student_ID'].str.len().eq(12).all()
 
 
 def test_log_rmse(tmp_path):
@@ -187,3 +191,26 @@ def test_log_rmse(tmp_path):
     assert path == str(out)
     df = pd.read_csv(path)
     assert df.iloc[-1]['model'] == 'test_model'
+
+
+def test_calculate_file_sha256(tmp_path):
+    p = tmp_path / 'sample.txt'
+    p.write_text('abc123', encoding='utf-8')
+    digest = calculate_file_sha256(str(p))
+    assert isinstance(digest, str)
+    assert len(digest) == 64
+
+
+def test_secure_load_clean_and_anonymize(tmp_path, sample_dataframe):
+    raw_path = tmp_path / 'raw.csv'
+    anon_path = tmp_path / 'anon.csv'
+    sample_dataframe.to_csv(raw_path, index=False)
+
+    before = calculate_file_sha256(str(raw_path))
+    result = secure_load_clean_and_anonymize(raw_path=str(raw_path), anon_path=str(anon_path))
+    after = calculate_file_sha256(str(raw_path))
+
+    assert result['integrity_ok'] is True
+    assert before == after
+    assert 'Student_Name' not in result['df_train'].columns
+    assert 'Student_ID' in result['df_train'].columns
