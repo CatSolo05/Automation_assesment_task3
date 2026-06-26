@@ -3,11 +3,13 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.linear_model import LinearRegression
-from scipy import stats
 
 
 def create_correlation_scatterplot(df, feature='Maths_Advanced', target='Software_Engineering_Final', 
-                                    output_path='correlation_scatterplot.png'):
+                                    output_path='correlation_scatterplot.png',
+                                    rmse_override=None,
+                                    rmse_label='RMSE',
+                                    big_rmse_text=True):
     """
     Generate a 2D scatterplot proving correlation between a feature and target variable.
     
@@ -16,6 +18,9 @@ def create_correlation_scatterplot(df, feature='Maths_Advanced', target='Softwar
         feature: Feature column name (X-axis)
         target: Target column name (Y-axis)
         output_path: Path to save the plot image
+        rmse_override: Optional externally evaluated RMSE (e.g., holdout/test RMSE)
+        rmse_label: Label shown next to RMSE value in the stats box
+        big_rmse_text: Whether to render RMSE as a large prominent overlay
         
     Returns:
         Tuple of (figure, axes, correlation_coefficient, rmse)
@@ -51,11 +56,28 @@ def create_correlation_scatterplot(df, feature='Maths_Advanced', target='Softwar
     ax.set_ylabel(f'{target} Score', fontsize=12, fontweight='bold')
     ax.set_title(f'Correlation: {feature} vs {target}', fontsize=14, fontweight='bold', pad=20)
     
+    # Use the externally evaluated RMSE when provided.
+    rmse_to_display = float(rmse_override) if rmse_override is not None else float(rmse)
+
     # Add statistics box
-    stats_text = f'Correlation: {correlation:.3f}\nRMSE: {rmse:.2f}\nSamples: {len(df)}'
+    stats_text = f'Correlation: {correlation:.3f}\n{rmse_label}: {rmse_to_display:.2f}\nSamples: {len(df)}'
     ax.text(0.05, 0.95, stats_text, transform=ax.transAxes, fontsize=11,
             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8),
             family='monospace')
+
+    if big_rmse_text:
+        ax.text(
+            0.98,
+            0.08,
+            f'RMSE = {rmse_to_display:.2f}',
+            transform=ax.transAxes,
+            ha='right',
+            va='bottom',
+            fontsize=24,
+            fontweight='bold',
+            color='#A23B72',
+            bbox=dict(boxstyle='round,pad=0.35', facecolor='white', edgecolor='#A23B72', linewidth=2, alpha=0.95),
+        )
     
     # Grid and legend
     ax.grid(True, alpha=0.3, linestyle='--')
@@ -70,9 +92,9 @@ def create_correlation_scatterplot(df, feature='Maths_Advanced', target='Softwar
     
     print(f'✓ Scatterplot saved to {output_path}')
     print(f'  Correlation Coefficient: {correlation:.4f}')
-    print(f'  RMSE: {rmse:.2f}')
+    print(f'  Displayed {rmse_label}: {rmse_to_display:.2f}')
     
-    return output_path, correlation, rmse
+    return output_path, correlation, rmse_to_display
 
 
 def create_multifeature_scatterplot(df, features=['Maths_Advanced', 'Physics'], 
